@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalkulator Stężeń</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            color: black;
+            background-color: white;
+            padding: 10px;
+            margin: 0;
+        }
+        p, label {
+            font-size: 14px;
+        }
+        .row {
+            margin-bottom: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 5px;
+        }
+        input {
+            padding: 4px;
+            border: 1px solid black;
+        }
+        input.n {
+            width: 110px;
+            font-weight: bold;
+        }
+        input.v, #vf {
+            width: 60px; /* Mieści do około 99999 */
+        }
+        input.c, #cf {
+            width: 45px; /* Mieści do około 100 */
+        }
+        button {
+            margin-top: 10px;
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border: 1px solid black;
+            background-color: white;
+            color: black;
+            display: block;
+        }
+        button:active {
+            background-color: black;
+            color: white;
+        }
+        select {
+            padding: 6px;
+            border: 1px solid black;
+            margin-top: 5px;
+            width: 100%;
+            max-width: 400px;
+        }
+        hr {
+            border: none;
+            border-top: 1px dashed black;
+            margin: 15px 0;
+            width: 100%;
+            max-width: 400px;
+        }
+        #error {
+            color: black;
+            font-weight: bold;
+            margin-top: 15px;
+            border: 1px solid black;
+            padding: 8px;
+            display: none;
+            max-width: 400px;
+        }
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 400px;
+            display: none;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 6px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .bold {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Kalkulator roztworów</h2>
+    <p>Zostaw <strong>dokładnie 2 puste pola</strong> (skasuj w nich zera!), które program ma obliczyć.</p>
+
+    <div id="ingredients">
+        </div>
+    
+    <button onclick="addIngredient()">+ Dodaj kolejny składnik</button>
+
+    <hr>
+
+    <div class="row">
+        <label class="bold" style="width: 110px;">WYNIK:</label>
+        <input type="number" id="vf" value="0" step="any"> ml,
+        <input type="number" id="cf" value="0" step="any"> %
+    </div>
+
+    <button class="bold" onclick="calculate()">Oblicz wynik</button>
+
+    <div id="error"></div>
+
+    <table id="resultTable">
+        <thead>
+            <tr>
+                <th>Element</th>
+                <th>Objętość (ml)</th>
+                <th>Stężenie (%)</th>
+            </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+    </table>
+
+    <hr>
+    
+    <label for="presetSelect"><strong>Szablony:</strong></label><br>
+    <select id="presetSelect" onchange="applyPreset()"></select>
+
+<script>
+    const presets = [
+        {
+            name: "Domyślny (2 składniki)",
+            ingredients: [
+                { name: "Składnik 1", v: "0", c: "0" },
+                { name: "Składnik 2", v: "0", c: "0" }
+            ],
+            final: { v: "0", c: "0" }
+        },
+        {
+            name: "Mieszanie alkoholi",
+            ingredients: [
+                { name: "Woda", v: "0", c: "0" },
+                { name: "Piwo", v: "0", c: "5" },
+                { name: "Wino", v: "0", c: "12" },
+                { name: "Wódka", v: "0", c: "40" },
+                { name: "Spirytus", v: "0", c: "96" }
+            ],
+            final: { v: "", c: "" }
+        },
+        {
+            name: "Stężenie nalewki",
+            ingredients: [
+                { name: "Woda", v: "", c: "0" },
+                { name: "Zalew", v: "0", c: "60" }
+            ],
+            final: { v: "0", c: "" }
+        },
+        {
+            name: "Mieszanie śmietanki",
+            ingredients: [
+                { name: "Woda", v: "0", c: "0" },
+                { name: "Mleko", v: "", c: "3.2" },
+                { name: "Śmietanka 12%", v: "0", c: "12" },
+                { name: "Śmietanka 18%", v: "0", c: "18" },
+                { name: "Śmietanka 30%", v: "", c: "30" },
+                { name: "Śmietanka 36%", v: "0", c: "36" },
+                { name: "Masło", v: "0", c: "82" },
+                { name: "Olej", v: "0", c: "100" }
+            ],
+            final: { v: "200", c: "18" }
+        }
+    ];
+
+    function init() {
+        let select = document.getElementById('presetSelect');
+        presets.forEach((p, index) => {
+            let opt = document.createElement('option');
+            opt.value = index;
+            opt.innerText = p.name;
+            select.appendChild(opt);
+        });
+        applyPreset();
+    }
+
+    function applyPreset() {
+        let idx = document.getElementById('presetSelect').value;
+        let p = presets[idx];
+        
+        let container = document.getElementById('ingredients');
+        container.innerHTML = '';
+        
+        p.ingredients.forEach(ing => {
+            let div = document.createElement('div');
+            div.className = 'row ingredient';
+            div.innerHTML = `
+                <input type="text" class="n" value="${ing.name}">
+                <input type="number" class="v" value="${ing.v}" step="any"> ml,
+                <input type="number" class="c" value="${ing.c}" step="any"> %
+            `;
+            container.appendChild(div);
+        });
+
+        document.getElementById('vf').value = p.final.v;
+        document.getElementById('cf').value = p.final.c;
+        
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('resultTable').style.display = 'none';
+    }
+
+    function addIngredient() {
+        let container = document.getElementById('ingredients');
+        let count = container.querySelectorAll('.ingredient').length + 1;
+        let div = document.createElement('div');
+        div.className = 'row ingredient';
+        div.innerHTML = `
+            <input type="text" class="n" value="Składnik ${count}">
+            <input type="number" class="v" value="0" step="any"> ml,
+            <input type="number" class="c" value="0" step="any"> %
+        `;
+        container.appendChild(div);
+    }
+
+    function calculate() {
+        let errorEl = document.getElementById('error');
+        let tableEl = document.getElementById('resultTable');
+        errorEl.style.display = 'none';
+        tableEl.style.display = 'none';
+
+        let emptyCount = 0;
+        let ingredients = [];
+        let rows = document.querySelectorAll('.ingredient');
+
+        rows.forEach((row) => {
+            let nameVal = row.querySelector('.n').value || 'Nieznany składnik';
+            let vVal = row.querySelector('.v').value;
+            let cVal = row.querySelector('.c').value;
+            
+            let v = (vVal === "") ? null : parseFloat(vVal);
+            let c = (cVal === "") ? null : parseFloat(cVal);
+            
+            if (v === null) emptyCount++;
+            if (c === null) emptyCount++;
+            
+            ingredients.push({ name: nameVal, v: v, c: c, m: null });
+        });
+
+        let vfVal = document.getElementById('vf').value;
+        let cfVal = document.getElementById('cf').value;
+        let final = {
+            name: 'Wynik końcowy',
+            v: (vfVal === "") ? null : parseFloat(vfVal),
+            c: (cfVal === "") ? null : parseFloat(cfVal),
+            m: null
+        };
+
+        if (final.v === null) emptyCount++;
+        if (final.c === null) emptyCount++;
+
+        if (emptyCount !== 2) {
+            errorEl.innerText = `Błąd: Muszą być dokładnie 2 puste okienka. Aktualnie pustych jest: ${emptyCount}.`;
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        let allItems = [...ingredients, final];
+
+        for (let pass = 0; pass < 20; pass++) {
+            for (let item of allItems) {
+                if (item.c === 0) item.m = 0; 
+                if (item.v !== null && item.c !== null) item.m = item.v * item.c;
+                if (item.v !== null && item.m !== null) item.c = (item.v === 0) ? 0 : item.m / item.v;
+                if (item.c !== null && item.m !== null && item.c !== 0) item.v = item.m / item.c;
+            }
+
+            let unkVols = ingredients.filter(i => i.v === null);
+            let knownVols = ingredients.filter(i => i.v !== null);
+            let sumKnownVols = knownVols.reduce((s, i) => s + i.v, 0);
+
+            if (final.v === null && unkVols.length === 0) {
+                final.v = sumKnownVols;
+            } else if (final.v !== null && unkVols.length === 1) {
+                unkVols[0].v = final.v - sumKnownVols;
+            }
+
+            let unkMasses = ingredients.filter(i => i.m === null);
+            let knownMasses = ingredients.filter(i => i.m !== null);
+            let sumKnownMasses = knownMasses.reduce((s, i) => s + i.m, 0);
+
+            if (final.m === null && unkMasses.length === 0) {
+                final.m = sumKnownMasses;
+            } else if (final.m !== null && unkMasses.length === 1) {
+                unkMasses[0].m = final.m - sumKnownMasses;
+            }
+
+            // Reguła Pearsona
+            if (final.v !== null && final.m !== null && unkVols.length === 2 && unkMasses.length === 2) {
+                let [i1, i2] = unkVols;
+                if (i1.c !== null && i2.c !== null && i1.c !== i2.c) {
+                    let vRem = final.v - sumKnownVols;
+                    let mRem = final.m - sumKnownMasses;
+                    
+                    i1.v = (mRem - vRem * i2.c) / (i1.c - i2.c);
+                    i2.v = vRem - i1.v;
+                }
+            }
+        }
+
+        let allValid = true;
+        for (let item of allItems) {
+            if (item.v !== null && item.v < 0 && item.v > -0.0001) item.v = 0;
+            if (item.c !== null && item.c < 0 && item.c > -0.0001) item.c = 0;
+
+            if (item.v === null || item.c === null || isNaN(item.v) || isNaN(item.c) || item.v < 0 || item.c < 0) {
+                allValid = false;
+                break;
+            }
+        }
+
+        if (!allValid) {
+            errorEl.innerText = "Błąd: Brak matematycznego rozwiązania lub podane wartości wzajemnie się wykluczają.";
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        let tbody = document.getElementById('resultBody');
+        tbody.innerHTML = '';
+        
+        allItems.forEach(item => {
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.name}</td>
+                <td>${parseFloat(item.v.toFixed(2))}</td>
+                <td>${parseFloat(item.c.toFixed(2))}</td>
+            `;
+            if (item.name === 'Wynik końcowy') {
+                tr.className = 'bold';
+            }
+            tbody.appendChild(tr);
+        });
+        
+        tableEl.style.display = 'table';
+    }
+
+    // Wywołanie startowe ładujące domyślny układ
+    window.onload = init;
+</script>
+
+</body>
+</html>
